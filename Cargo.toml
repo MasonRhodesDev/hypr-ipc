@@ -1,0 +1,13 @@
+[package]
+name = "hypr-ipc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Fail-closed Hyprland instance discovery, socket2 events, and hyprctl"
+repository = "https://github.com/MasonRhodesDev/hypr-ipc"
+publish = true
+
+[dependencies]
+hypr-paths = { git = "https://github.com/MasonRhodesDev/hypr-paths", rev = "3fb776c9b63bd168c9e937e4d295e41d0f5b6b5c", version = "0.1.0" }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["net", "process", "time", "rt"] }
