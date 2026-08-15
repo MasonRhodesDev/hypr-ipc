@@ -30,7 +30,8 @@ dependencies = [
 [[package]]
 name = "hypr-paths"
 version = "0.1.0"
-source = "git+https://github.com/MasonRhodesDev/hypr-paths?rev=3fb776c9b63bd168c9e937e4d295e41d0f5b6b5c#3fb776c9b63bd168c9e937e4d295e41d0f5b6b5c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2b57d35d5a9d1fe4892d499fca8fb64f331cf0a2618ca38b1fc32fdfef9f6ed"
 
 [[package]]
 name = "itoa"
