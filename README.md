@@ -8,7 +8,7 @@ Discovery order:
 1. `$HYPRLAND_INSTANCE_SIGNATURE` when `$XDG_RUNTIME_DIR/hypr/$HIS/.socket2.sock` exists
 2. Scan `$XDG_RUNTIME_DIR/hypr/*/hyprland.lock` for a PID whose `/proc/<pid>/comm` is `Hyprland` and whose `.socket2.sock` exists
 
-There is no `/run/user/<uid>` fallback. Runtime comes from `hypr-paths`.
+There is no `/run/user/<uid>` fallback. Runtime comes from `xdg-paths`.
 
 Listen on `.socket2.sock` (`event>>payload` lines). Reconnect by re-resolving
 the instance; suggested backoff is 2s.

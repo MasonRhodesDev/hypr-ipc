@@ -29,7 +29,7 @@ pub const RECONNECT: Duration = Duration::from_secs(2);
 /// Why Hyprland IPC could not be used.
 #[derive(Debug)]
 pub enum Error {
-    Paths(hypr_paths::Error),
+    Paths(xdg_paths::Error),
     Io(std::io::Error),
     NoInstance,
     Timeout,
@@ -72,8 +72,8 @@ impl std::error::Error for Error {
     }
 }
 
-impl From<hypr_paths::Error> for Error {
-    fn from(value: hypr_paths::Error) -> Self {
+impl From<xdg_paths::Error> for Error {
+    fn from(value: xdg_paths::Error) -> Self {
         Self::Paths(value)
     }
 }
@@ -111,7 +111,7 @@ pub fn parse_line(line: &str) -> Option<Frame> {
 
 /// Instance directory from the process environment.
 pub fn instance_dir() -> Result<PathBuf, Error> {
-    let dirs = hypr_paths::BaseDirs::from_env()?;
+    let dirs = xdg_paths::BaseDirs::from_env()?;
     instance_dir_from(
         dirs.runtime_dir(),
         env::var_os("HYPRLAND_INSTANCE_SIGNATURE").as_deref(),
@@ -186,7 +186,7 @@ pub fn command_socket_path() -> Result<PathBuf, Error> {
 
 /// True when `$XDG_CONFIG_HOME/hypr/hyprland.lua` exists.
 pub fn lua_dialect() -> Result<bool, Error> {
-    let dirs = hypr_paths::ConfigDirs::from_env()?;
+    let dirs = xdg_paths::ConfigDirs::from_env()?;
     Ok(lua_dialect_from(dirs.config_home()))
 }
 

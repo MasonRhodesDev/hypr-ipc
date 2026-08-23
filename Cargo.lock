@@ -20,18 +20,12 @@ dependencies = [
 
 [[package]]
 name = "hypr-ipc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "hypr-paths",
  "serde_json",
  "tokio",
+ "xdg-paths",
 ]
-
-[[package]]
-name = "hypr-paths"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2b57d35d5a9d1fe4892d499fca8fb64f331cf0a2618ca38b1fc32fdfef9f6ed"
 
 [[package]]
 name = "itoa"
@@ -200,6 +194,12 @@ checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
 dependencies = [
  "windows-link",
 ]
+
+[[package]]
+name = "xdg-paths"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86bfd0671d6ceb9f3d5049ceaa7ec29b00d36cf26aceae18e4c9f553d7da780a"
 
 [[package]]
 name = "zmij"
