@@ -5,7 +5,7 @@ hypr suite.
 
 Discovery order:
 
-1. `$HYPRLAND_INSTANCE_SIGNATURE` when `$XDG_RUNTIME_DIR/hypr/$HIS/.socket2.sock` exists
+1. `$HYPRLAND_INSTANCE_SIGNATURE` when `$XDG_RUNTIME_DIR/hypr/$HIS/.socket2.sock` exists **and** that instance's `hyprland.lock` does not name a dead compositor (a crash leaves the dir and socket file behind; a client started before the crash keeps the old signature). No lock is treated as unknown and still trusted
 2. Scan `$XDG_RUNTIME_DIR/hypr/*/hyprland.lock` for a PID whose `/proc/<pid>/comm` is `Hyprland` and whose `.socket2.sock` exists
 
 There is no `/run/user/<uid>` fallback. Runtime comes from `xdg-paths`.

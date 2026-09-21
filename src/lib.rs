@@ -1,7 +1,7 @@
 //! Fail-closed Hyprland IPC: instance discovery, socket2 events, hyprctl.
 //!
 //! Discovery: `HYPRLAND_INSTANCE_SIGNATURE` if that instance's `.socket2.sock`
-//! exists; otherwise scan `$XDG_RUNTIME_DIR/hypr/*/hyprland.lock` for a live
+//! exists and its lock does not name a dead compositor; otherwise scan `$XDG_RUNTIME_DIR/hypr/*/hyprland.lock` for a live
 //! Hyprland PID. There is no `/run/user/<uid>` fallback.
 
 use std::env;
@@ -133,7 +133,15 @@ pub fn instance_dir_from_with(
     if let Some(sig) = his {
         if !sig.is_empty() {
             let candidate = hypr.join(sig);
-            if candidate.join(SOCKET2_NAME).exists() {
+            // A compositor crash leaves its instance dir behind (socket file
+            // and lock), and a long-lived client started before the crash keeps
+            // the old signature in its environment. Trusting the bare socket
+            // file would pin such a client to a dead socket forever, so a lock
+            // that names a dead compositor disqualifies the signature and we
+            // fall through to the scan. No lock (or an unreadable one) is
+            // unknown, not dead: keep trusting the socket.
+            let crashed = lock_pid(&candidate).is_some_and(|pid| !is_live(pid));
+            if candidate.join(SOCKET2_NAME).exists() && !crashed {
                 return Ok(candidate);
             }
         }
@@ -144,14 +152,7 @@ pub fn instance_dir_from_with(
     };
     for entry in rd.flatten() {
         let dir = entry.path();
-        let Ok(text) = std::fs::read_to_string(dir.join(LOCK_NAME)) else {
-            continue;
-        };
-        let Some(pid) = text
-            .lines()
-            .next()
-            .and_then(|line| line.trim().parse::<u32>().ok())
-        else {
+        let Some(pid) = lock_pid(&dir) else {
             continue;
         };
         if !is_live(pid) {
@@ -162,6 +163,17 @@ pub fn instance_dir_from_with(
         }
     }
     Err(Error::NoInstance)
+}
+
+/// Compositor PID from an instance dir's lock file, when it has a parsable one.
+fn lock_pid(dir: &Path) -> Option<u32> {
+    std::fs::read_to_string(dir.join(LOCK_NAME))
+        .ok()?
+        .lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn pid_is_hyprland(pid: u32) -> bool {
@@ -289,15 +301,54 @@ mod tests {
     }
 
     #[test]
-    fn his_wins_when_socket2_exists() {
+    fn his_wins_when_its_compositor_is_live() {
         let runtime = scratch("his");
-        write_instance(&runtime, "stale", 1, true);
+        write_instance(&runtime, "other", 1, true);
         write_instance(&runtime, "live", 2, true);
-        let dir = instance_dir_from_with(&runtime, Some(OsStr::new("live")), |_| {
-            panic!("HIS hit must not scan")
+        let dir = instance_dir_from_with(&runtime, Some(OsStr::new("live")), |pid| {
+            assert_ne!(pid, 1, "a live HIS hit must not consult other instances");
+            pid == 2
         })
         .unwrap();
         assert_eq!(dir.file_name().unwrap(), "live");
+        let _ = std::fs::remove_dir_all(&runtime);
+    }
+
+    // The 2026-09-20 incident: Hyprland crashed and was restarted; a daemon
+    // that started earlier kept the dead instance's signature, whose socket
+    // file still existed, and retried it forever.
+    #[test]
+    fn crashed_his_falls_back_to_the_live_instance() {
+        let runtime = scratch("crashed");
+        write_instance(&runtime, "crashed", 100, true);
+        write_instance(&runtime, "current", 42, true);
+        let dir =
+            instance_dir_from_with(&runtime, Some(OsStr::new("crashed")), |pid| pid == 42).unwrap();
+        assert_eq!(dir.file_name().unwrap(), "current");
+        let _ = std::fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn crashed_his_with_no_live_instance_fails_closed() {
+        let runtime = scratch("crashed-only");
+        write_instance(&runtime, "crashed", 100, true);
+        let err =
+            instance_dir_from_with(&runtime, Some(OsStr::new("crashed")), |_| false).unwrap_err();
+        assert!(matches!(err, Error::NoInstance));
+        let _ = std::fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn his_without_a_lock_is_still_trusted() {
+        let runtime = scratch("nolock");
+        let dir = runtime.join("hypr").join("bare");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(SOCKET2_NAME), []).unwrap();
+        let got = instance_dir_from_with(&runtime, Some(OsStr::new("bare")), |_| {
+            panic!("no lock means unknown, not dead: must not be judged")
+        })
+        .unwrap();
+        assert_eq!(got.file_name().unwrap(), "bare");
         let _ = std::fs::remove_dir_all(&runtime);
     }
 
