@@ -5,7 +5,7 @@
 //! Hyprland PID. There is no `/run/user/<uid>` fallback.
 
 use std::env;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -218,8 +218,29 @@ pub async fn hyprctl_output(
     args: &[&str],
     timeout: Duration,
 ) -> Result<std::process::Output, Error> {
+    hyprctl_output_pinned(args, timeout, live_signature().as_deref()).await
+}
+
+/// Signature (instance dir name) of the live instance, `None` when discovery
+/// finds nothing (hyprctl is then left to its own environment and fails loudly).
+fn live_signature() -> Option<OsString> {
+    instance_dir().ok()?.file_name().map(OsStr::to_os_string)
+}
+
+/// `hyprctl` talks to `$HYPRLAND_INSTANCE_SIGNATURE`, and a client started
+/// before a compositor crash keeps the dead instance's value in its
+/// environment. Pinning the child to the discovered instance keeps every call
+/// working across a crash + restart, the same way `socket2_path` does.
+async fn hyprctl_output_pinned(
+    args: &[&str],
+    timeout: Duration,
+    signature: Option<&OsStr>,
+) -> Result<std::process::Output, Error> {
     let mut cmd = tokio::process::Command::new("hyprctl");
     cmd.args(args).kill_on_drop(true);
+    if let Some(sig) = signature {
+        cmd.env("HYPRLAND_INSTANCE_SIGNATURE", sig);
+    }
     match tokio::time::timeout(timeout, cmd.output()).await {
         Ok(Ok(out)) => Ok(out),
         Ok(Err(e)) => Err(Error::Io(e)),
@@ -249,7 +270,12 @@ pub async fn hyprctl_ok(args: &[&str], timeout: Duration) -> Result<(), Error> {
 
 /// Blocking `hyprctl` JSON with no timeout. Safe outside a tokio runtime.
 pub fn hyprctl_json_std(args: &[&str]) -> Result<serde_json::Value, Error> {
-    let out = std::process::Command::new("hyprctl").args(args).output()?;
+    let mut cmd = std::process::Command::new("hyprctl");
+    cmd.args(args);
+    if let Some(sig) = live_signature() {
+        cmd.env("HYPRLAND_INSTANCE_SIGNATURE", sig);
+    }
+    let out = cmd.output()?;
     Ok(serde_json::from_slice(&out.stdout)?)
 }
 
@@ -336,6 +362,57 @@ mod tests {
             instance_dir_from_with(&runtime, Some(OsStr::new("crashed")), |_| false).unwrap_err();
         assert!(matches!(err, Error::NoInstance));
         let _ = std::fs::remove_dir_all(&runtime);
+    }
+
+    #[test]
+    fn hyprctl_child_is_pinned_to_the_given_instance() {
+        // A fake `hyprctl` that reports the signature it was started with.
+        let dir = scratch("fake-hyprctl");
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let script = bin.join("hyprctl");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nprintf '%s' \"$HYPRLAND_INSTANCE_SIGNATURE\"\n",
+        )
+        .unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let old_path = std::env::var_os("PATH").unwrap_or_default();
+        let mut path = OsString::from(bin.as_os_str());
+        path.push(":");
+        path.push(&old_path);
+        std::env::set_var("PATH", &path);
+        std::env::set_var("HYPRLAND_INSTANCE_SIGNATURE", "dead-instance");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let pinned = rt
+            .block_on(hyprctl_output_pinned(
+                &["monitors"],
+                Duration::from_secs(5),
+                Some(OsStr::new("live-instance")),
+            ))
+            .unwrap();
+        let inherited = rt
+            .block_on(hyprctl_output_pinned(
+                &["monitors"],
+                Duration::from_secs(5),
+                None,
+            ))
+            .unwrap();
+
+        std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE");
+        std::env::set_var("PATH", old_path);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(String::from_utf8_lossy(&pinned.stdout), "live-instance");
+        // With nothing discovered the child keeps whatever it inherited.
+        assert_eq!(String::from_utf8_lossy(&inherited.stdout), "dead-instance");
     }
 
     #[test]

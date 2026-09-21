@@ -13,6 +13,10 @@ There is no `/run/user/<uid>` fallback. Runtime comes from `xdg-paths`.
 Listen on `.socket2.sock` (`event>>payload` lines). Reconnect by re-resolving
 the instance; suggested backoff is 2s.
 
+The `hyprctl` helpers run the child with `HYPRLAND_INSTANCE_SIGNATURE` set to the
+discovered instance, so a client started before a compositor crash keeps working
+after the restart.
+
 `hyprctl` success for mutating commands is stdout exactly `ok`. JSON helpers
 parse stdout. Lua dialect is a boolean: `hyprland.lua` exists under the XDG
 hypr config dir.
