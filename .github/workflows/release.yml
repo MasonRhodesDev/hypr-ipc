@@ -6,6 +6,6 @@ on:
 
 jobs:
   crates:
-    uses: MasonRhodesDev/packaging-workflows/.github/workflows/crates-publish.yml@v1
+    uses: MasonRhodesDev/packaging-workflows/.github/workflows/crates-publish.yml@3d0c5630674f086918226d0140c51b97887c799f # v1
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
